@@ -1,10 +1,8 @@
-import json
-
 from demo.models import Person
 from django.forms.models import model_to_dict
 from django.http import JsonResponse
 from django.views.generic import View
-from django.core.paginator import Paginator, EmptyPage, PageNotAnInteger
+from django.core.paginator import Paginator, EmptyPage
 
 
 class PersonOptions(View):

@@ -9,12 +9,13 @@ https://docs.djangoproject.com/en/4.2/topics/settings/
 For the full list of settings and their values, see
 https://docs.djangoproject.com/en/4.2/ref/settings/
 """
+import os
 
 from pathlib import Path
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
-
+LOGS_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "logs"),
 
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/4.2/howto/deployment/checklist/
@@ -48,6 +49,7 @@ MIDDLEWARE = [
     "django.contrib.auth.middleware.AuthenticationMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
+    "common.logger_middleware.RequestLogMiddleware"
 ]
 
 ROOT_URLCONF = "djangotemp.urls"
@@ -106,6 +108,75 @@ AUTH_PASSWORD_VALIDATORS = [
     },
 ]
 
+LOGGING = {
+    # 版本
+    'version': 1,
+    # 是否禁止默认配置的记录器
+    'disable_existing_loggers': False,
+    'formatters': {
+        'standard': {
+            'format': '{"time": "%(asctime)s", "level": "%(levelname)s", "method": "%(method)s", '
+                      '"username": "%(username)s", "sip": "%(sip)s", "dip": "%(dip)s", '
+                      '"path": "%(path)s", "status_code": "%(status_code)s", '
+                      '"reason_phrase": "%(reason_phrase)s", '
+                      '"func": "%(module)s.%(funcName)s:%(lineno)d",  "message": "%(message)s"}',
+            'datefmt': '%Y-%m-%d %H:%M:%S'
+        }
+    },
+    # 过滤器
+    'filters': {
+        'request_info': {'()': 'common.logger_middleware.RequestLogFilter'},
+    },
+    'handlers': {
+        # 标准输出
+        'console': {
+            'level': 'ERROR',
+            'class': 'logging.StreamHandler',
+            'formatter': 'standard'
+        },
+        # 自定义 handlers，输出到文件
+        'restful_api': {
+            'level': 'DEBUG',
+            # 时间滚动切分
+            'class': 'logging.handlers.TimedRotatingFileHandler',
+            'filename': LOGS_DIR[0] + '/info.log',
+            'formatter': 'standard',
+            # 调用过滤器
+            'filters': ['request_info'],
+            # 每天凌晨切分
+            'when': 'MIDNIGHT',
+            # 保存 30 天
+            'backupCount': 30,
+        },
+        'celery': {
+            'level': 'INFO',
+            # 此处可能需要注意celery多进程的写日志
+            'class': 'logging.handlers.RotatingFileHandler',
+            'filename': LOGS_DIR[0] + '/celery.log',
+            'maxBytes': 1024 * 1024 * 10,
+            'backupCount': 3,
+        },
+    },
+    'loggers': {
+        'django': {
+            'handlers': ['console'],
+            'level': 'ERROR',
+            'propagate': False
+        },
+        'web.log': {
+            'handlers': ['restful_api'],
+            'level': 'INFO',
+            # 此记录器处理过的消息就不再让 django 记录器再次处理了
+            'propagate': False
+        },
+        'celery': {
+            'handlers': ['celery'],
+            'propagate': True,
+            'level': 'INFO',
+        },
+    }
+}
+
 
 # Internationalization
 # https://docs.djangoproject.com/en/4.2/topics/i18n/
@@ -128,3 +199,11 @@ STATIC_URL = "static/"
 # https://docs.djangoproject.com/en/4.2/ref/settings/#default-auto-field
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
+
+# Broker配置，使用Redis作为消息中间件
+CELERY_BROKER_URL = 'redis://127.0.0.1:6379/0'
+
+# BACKEND配置，这里使用redis
+CELERY_RESULT_BACKEND = 'redis://127.0.0.1:6379/0'
+
+CELERY_RESULT_SERIALIZER = 'json' # 结果序列化方案
